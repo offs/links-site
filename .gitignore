@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+testConnection.js
 
 # debug
 npm-debug.log*
@@ -30,7 +31,9 @@ yarn-debug.log*
 yarn-error.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -38,3 +41,33 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# public uploads
+public/uploads
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+
+# Local development
+*.log
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build artifacts
+.swc/
+.turbo/
+
+# Test coverage
+.nyc_output/
+
+# Cache
+.cache/
+.eslintcache

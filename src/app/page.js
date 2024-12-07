@@ -1,101 +1,136 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Image from "next/image";
+import Link from "next/link";
+import LinkItem from "../components/LinkItem";
+import { useSession } from 'next-auth/react';
+
+const DEFAULT_PROFILE_IMAGE = '/default-profile.png';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const { data: session, status } = useSession();
+  const [links, setLinks] = useState([]);
+  const [settings, setSettings] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [settingsRes, linksRes] = await Promise.all([
+          fetch('/api/settings'),
+          fetch('/api/links')
+        ]);
+
+        if (settingsRes.ok && linksRes.ok) {
+          const [settingsData, linksData] = await Promise.all([
+            settingsRes.json(),
+            linksRes.json()
+          ]);
+          setSettings(settingsData);
+          setLinks(linksData);
+        }
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (status === 'authenticated') {
+      fetchData();
+    } else if (status === 'unauthenticated') {
+      setLoading(false);
+    }
+  }, [status]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#1a1625]">
+        <div className="w-8 h-8 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated') {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#1a1625] py-16 px-4">
+        <h1 className="text-3xl font-bold text-white mb-8">Welcome to Links Site</h1>
+        <div className="space-y-4">
+          <Link
+            href="/auth/signin"
+            className="block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-center"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Sign In
+          </Link>
+          <Link
+            href="/auth/register"
+            className="block px-6 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors text-center"
           >
-            Read our docs
-          </a>
+            Register
+          </Link>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+    );
+  }
+
+  if (!settings) return null;
+
+  const getAnimationClass = () => {
+    switch (settings.theme.animation) {
+      case 'scale':
+        return 'hover:scale-[1.02]';
+      case 'slide':
+        return 'hover:translate-x-2';
+      case 'glow':
+        return 'hover:shadow-lg hover:shadow-violet-500/20';
+      default:
+        return 'hover:scale-[1.02]';
+    }
+  };
+
+  return (
+    <div className={`min-h-screen py-16 px-4 ${settings.theme.background}`}>
+      <div className="max-w-md mx-auto space-y-8">
+        <div className="text-center space-y-4">
+          <div className="relative w-32 h-32 mx-auto">
+            <Image
+              src={settings.profileImage || DEFAULT_PROFILE_IMAGE}
+              alt="Profile Picture"
+              fill
+              className={`rounded-full object-cover border-2 border-${settings.theme.accent}-400/20`}
+            />
+          </div>
+          <div>
+            <h1 className={`text-2xl font-bold text-${settings.theme.accent}-200`}>
+              {settings.displayName}
+            </h1>
+            <p className={`text-${settings.theme.accent}-400`}>{settings.username}</p>
+          </div>
+        </div>
+        
+        <div className="space-y-4 px-4">
+          {links.map((link, index) => (
+            <LinkItem
+              key={index}
+              title={link.title}
+              url={link.url}
+              bgColor={link.bgColor}
+              hoverColor={link.hoverColor}
+              buttonStyle={settings.theme.buttonStyle}
+              animation={getAnimationClass()}
+              icon={link.icon}
+              iconPosition={link.iconPosition}
+              textColor={link.textColor}
+              fontSize={link.fontSize}
+              fontWeight={link.fontWeight}
+              opacity={link.opacity}
+              border={link.border}
+              shadow={link.shadow}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
