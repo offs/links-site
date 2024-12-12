@@ -1,33 +1,33 @@
 'use client';
 
 import Link from 'next/link';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function Header() {
   const { data: session, status } = useSession();
   const [isAdmin, setIsAdmin] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (session?.user?.email) {
-        try {
-          const response = await fetch('/api/admin/users');
-          if (response.ok) {
-            const users = await response.json();
-            const currentUser = users.find(user => user.email === session.user.email);
-            setIsAdmin(currentUser?.isAdmin || false);
-          }
-        } catch (error) {
-          console.error('Error checking admin status:', error);
-        }
-      }
-    };
-
-    checkAdminStatus();
+    if (session?.user?.isAdmin) {
+      setIsAdmin(true);
+    } else {
+      setIsAdmin(false);
+    }
   }, [session]);
 
-  if (status === 'loading') return null;
+  const handleSignOut = async (e) => {
+    e.preventDefault();
+    const data = await signOut({ redirect: false, callbackUrl: '/' });
+    router.push(data.url);
+  };
+
+  // Don't render anything while checking authentication
+  if (status === 'loading') {
+    return null;
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-[#1a1625] border-b border-white/10 z-50">
@@ -37,7 +37,7 @@ export default function Header() {
         </Link>
         
         <nav className="flex items-center gap-6">
-          {session ? (
+          {status === 'authenticated' ? (
             <>
               {isAdmin && (
                 <Link
@@ -53,12 +53,12 @@ export default function Header() {
               >
                 Settings
               </Link>
-              <Link
-                href="/api/auth/signout"
+              <button
+                onClick={handleSignOut}
                 className="text-white hover:text-white/80 transition-colors"
               >
                 Sign Out
-              </Link>
+              </button>
             </>
           ) : (
             <>
