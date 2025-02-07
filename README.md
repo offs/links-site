@@ -1,10 +1,8 @@
 # Links Site
 
-A modern, customizable link-in-bio platform built with Next.js 13, MongoDB, and Cloudinary.
+A modern, customizable link-in-bio platform built with Next.js, MongoDB, and Cloudinary.
 
-![Next.js](https://img.shields.io/badge/Next.js-13-black)
-![MongoDB](https://img.shields.io/badge/MongoDB-6.0-green)
-![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-blue)
+![Next.js](https://img.shields.io/badge/Next.js-black?logo=next.js&logoColor=white) ![MongoDB](https://img.shields.io/badge/MongoDB-green?logo=mongodb&logoColor=white) ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-blue?logo=tailwindcss&logoColor=white)
 
 ## Features
 
@@ -37,7 +35,7 @@ A modern, customizable link-in-bio platform built with Next.js 13, MongoDB, and 
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js
 - MongoDB database
 - Cloudinary account
 
