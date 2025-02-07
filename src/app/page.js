@@ -89,6 +89,8 @@ export default function Home() {
     }
   };
 
+  const displayName = settings?.displayName || settings?.name || 'Your Name';
+
   return (
     <div className={`min-h-screen py-16 px-4 ${settings.theme.background}`}>
       <div className="max-w-md mx-auto space-y-8">
@@ -103,7 +105,7 @@ export default function Home() {
           </div>
           <div>
             <h1 className={`text-2xl font-bold text-${settings.theme.accent}-200`}>
-              {settings.displayName}
+              {displayName}
             </h1>
             <p className={`text-${settings.theme.accent}-400`}>{settings.username}</p>
           </div>

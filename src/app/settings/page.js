@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import ImageUpload from '@/components/ImageUpload';
 import AddLinkForm from '@/components/AddLinkForm';
 import LinkItem from '@/components/LinkItem';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import debounce from 'lodash/debounce';
 
 const DEFAULT_PROFILE_IMAGE = '/default-profile.png';
 
@@ -31,6 +32,81 @@ export default function Settings() {
   });
   const [activeTab, setActiveTab] = useState('profile');
   const [loading, setLoading] = useState(true);
+  const [displayName, setDisplayName] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameError, setUsernameError] = useState('');
+
+  const updateDisplayName = useCallback(
+    debounce(async (newName) => {
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            name: newName
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to update name');
+        }
+        
+        const { settings: updatedSettings } = await response.json();
+        setSettings(updatedSettings);
+        setDisplayName(newName);
+        
+        // Force a refresh to update the session
+        router.refresh();
+      } catch (error) {
+        console.error('Error updating display name:', error);
+      }
+    }, 500),
+    [router]
+  );
+
+  const updateUsername = useCallback(
+    debounce(async (newUsername) => {
+      try {
+        setUsernameError(''); // Clear any previous errors
+        const response = await fetch('/api/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            username: newUsername
+          })
+        });
+        
+        if (!response.ok) {
+          const data = await response.json();
+          setUsernameError(data.error);
+          return;
+        }
+        
+        const { settings: updatedSettings } = await response.json();
+        setSettings(updatedSettings);
+        setUsername(newUsername);
+        
+        // Force a refresh to update the session
+        router.refresh();
+      } catch (error) {
+        console.error('Error updating username:', error);
+        setUsernameError('Failed to update username');
+      }
+    }, 500),
+    [router]
+  );
+
+  useEffect(() => {
+    if (settings?.name) {
+      setDisplayName(settings.name);
+    }
+  }, [settings?.name]);
+
+  useEffect(() => {
+    if (settings?.username) {
+      setUsername(settings.username);
+    }
+  }, [settings?.username]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -223,8 +299,11 @@ export default function Settings() {
                     <label className="block text-sm font-medium mb-2">Display Name</label>
                     <input
                       type="text"
-                      value={settings.name}
-                      onChange={(e) => saveSettings({ ...settings, name: e.target.value })}
+                      value={displayName}
+                      onChange={(e) => {
+                        setDisplayName(e.target.value);
+                        updateDisplayName(e.target.value);
+                      }}
                       className="w-full p-3 rounded-lg bg-black/20 border border-white/10 focus:border-violet-400 outline-none"
                       placeholder="Enter your name"
                     />
@@ -233,11 +312,19 @@ export default function Settings() {
                     <label className="block text-sm font-medium mb-2">Username</label>
                     <input
                       type="text"
-                      value={settings.username}
-                      onChange={(e) => saveSettings({ ...settings, username: e.target.value })}
-                      className="w-full p-3 rounded-lg bg-black/20 border border-white/10 focus:border-violet-400 outline-none"
+                      value={username}
+                      onChange={(e) => {
+                        setUsername(e.target.value);
+                        updateUsername(e.target.value);
+                      }}
+                      className={`w-full p-3 rounded-lg bg-black/20 border ${
+                        usernameError ? 'border-red-500' : 'border-white/10'
+                      } focus:border-violet-400 outline-none`}
                       placeholder="@username"
                     />
+                    {usernameError && (
+                      <p className="mt-2 text-sm text-red-400">{usernameError}</p>
+                    )}
                   </div>
                 </div>
               </div>
