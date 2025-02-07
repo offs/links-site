@@ -21,6 +21,17 @@ A modern, customizable link-in-bio platform built with Next.js 13, MongoDB, and 
   - Border styles and shadows
   - Custom opacity and animations
 
+## Screenshots
+
+<details>
+  <summary>Click to expand</summary>
+
+  ![Page](https://i.imgur.com/TyBE7je.png)
+  ![User Settings](https://i.imgur.com/so20jyw.png)
+  ![Links Settings](https://i.imgur.com/VBxgtzW.png)
+
+</details>
+
 ## Quick Start
 
 ### Prerequisites
