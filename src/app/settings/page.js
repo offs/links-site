@@ -35,6 +35,8 @@ export default function Settings() {
   const [displayName, setDisplayName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
+  const [usernameLastUpdated, setUsernameLastUpdated] = useState(null);
+  const [usernameCooldown, setUsernameCooldown] = useState(false);
 
   const updateDisplayName = useCallback(
     debounce(async (newName) => {
@@ -68,6 +70,18 @@ export default function Settings() {
     debounce(async (newUsername) => {
       try {
         setUsernameError(''); // Clear any previous errors
+
+        // Check cooldown (5 minutes)
+        const COOLDOWN_MINUTES = 5;
+        if (usernameLastUpdated) {
+          const timeSinceLastUpdate = (new Date() - new Date(usernameLastUpdated)) / 1000 / 60; // in minutes
+          if (timeSinceLastUpdate < COOLDOWN_MINUTES) {
+            setUsernameCooldown(true);
+            setUsernameError(`Please wait ${Math.ceil(COOLDOWN_MINUTES - timeSinceLastUpdate)} minutes before changing username again`);
+            return;
+          }
+        }
+
         const response = await fetch('/api/settings', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -85,6 +99,8 @@ export default function Settings() {
         const { settings: updatedSettings } = await response.json();
         setSettings(updatedSettings);
         setUsername(newUsername);
+        setUsernameLastUpdated(new Date().toISOString());
+        setUsernameCooldown(false);
         
         // Force a refresh to update the session
         router.refresh();
@@ -93,7 +109,7 @@ export default function Settings() {
         setUsernameError('Failed to update username');
       }
     }, 500),
-    [router]
+    [router, usernameLastUpdated]
   );
 
   useEffect(() => {
@@ -140,6 +156,19 @@ export default function Settings() {
       fetchData();
     }
   }, [status, router]);
+
+  useEffect(() => {
+    const lastUpdated = localStorage.getItem('usernameLastUpdated');
+    if (lastUpdated) {
+      setUsernameLastUpdated(lastUpdated);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (usernameLastUpdated) {
+      localStorage.setItem('usernameLastUpdated', usernameLastUpdated);
+    }
+  }, [usernameLastUpdated]);
 
   if (loading || !settings) {
     return (
@@ -315,15 +344,23 @@ export default function Settings() {
                       value={username}
                       onChange={(e) => {
                         setUsername(e.target.value);
-                        updateUsername(e.target.value);
+                        if (!usernameCooldown) {
+                          updateUsername(e.target.value);
+                        }
                       }}
                       className={`w-full p-3 rounded-lg bg-black/20 border ${
                         usernameError ? 'border-red-500' : 'border-white/10'
                       } focus:border-violet-400 outline-none`}
                       placeholder="@username"
+                      disabled={usernameCooldown}
                     />
                     {usernameError && (
                       <p className="mt-2 text-sm text-red-400">{usernameError}</p>
+                    )}
+                    {usernameCooldown && (
+                      <p className="mt-2 text-sm text-yellow-400">
+                        Username is on cooldown
+                      </p>
                     )}
                   </div>
                 </div>
