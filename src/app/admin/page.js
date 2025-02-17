@@ -5,12 +5,11 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
 export default function AdminDashboard() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedUser, setSelectedUser] = useState(null);
   const [globalSettings, setGlobalSettings] = useState({ registrationEnabled: true });
 
   const fetchUsers = useCallback(async () => {
@@ -61,7 +60,9 @@ export default function AdminDashboard() {
         }),
       });
       
-      if (!response.ok) throw new Error('Failed to update registration status');
+      if (!response.ok) {
+        throw new Error('Failed to update registration status');
+      }
       
       setGlobalSettings(prev => ({ 
         ...prev, 
@@ -80,7 +81,9 @@ export default function AdminDashboard() {
         body: JSON.stringify({ userId, isAdmin }),
       });
       
-      if (!response.ok) throw new Error('Failed to update user');
+      if (!response.ok) {
+        throw new Error('Failed to update user');
+      }
       
       await fetchUsers();
     } catch (error) {
@@ -100,7 +103,9 @@ export default function AdminDashboard() {
         body: JSON.stringify({ userId }),
       });
       
-      if (!response.ok) throw new Error('Failed to delete user');
+      if (!response.ok) {
+        throw new Error('Failed to delete user');
+      }
       
       await fetchUsers();
     } catch (error) {

@@ -19,3 +19,98 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@layer components {
+  .page {
+    @apply min-h-screen bg-[#1a1625] text-white py-8 px-4;
+  }
+
+  .container {
+    @apply max-w-4xl mx-auto;
+  }
+
+  .header {
+    @apply flex justify-between items-center mb-8;
+  }
+
+  .title {
+    @apply text-3xl font-bold text-violet-200;
+  }
+
+  .btn {
+    @apply px-6 py-2.5 rounded-lg transition-colors;
+  }
+
+  .btn-primary {
+    @apply btn bg-violet-600 hover:bg-violet-700 text-white font-medium;
+  }
+
+  .btn-disabled {
+    @apply btn bg-gray-600 cursor-not-allowed;
+  }
+
+  .card {
+    @apply bg-white/5 rounded-xl p-8;
+  }
+
+  .card-title {
+    @apply text-xl font-semibold mb-6;
+  }
+
+  .input {
+    @apply w-full p-3 rounded-lg bg-black/20 border border-white/10 focus:border-violet-400 outline-none;
+  }
+
+  .input-error {
+    @apply border-red-500;
+  }
+
+  .label {
+    @apply block text-sm font-medium mb-2;
+  }
+
+  .tabs {
+    @apply flex space-x-1 bg-white/5 p-1 rounded-lg mb-8;
+  }
+
+  .tab {
+    @apply flex-1 py-2.5 text-sm font-medium rounded-md transition-colors;
+  }
+
+  .tab-active {
+    @apply bg-violet-600 text-white;
+  }
+
+  .tab-inactive {
+    @apply text-white/70 hover:text-white hover:bg-white/5;
+  }
+
+  .text-success {
+    @apply text-sm text-emerald-400;
+  }
+
+  .text-error {
+    @apply text-sm text-red-400;
+  }
+
+  .text-warning {
+    @apply text-sm text-yellow-400;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer utilities {
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-out;
+  }
+}

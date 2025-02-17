@@ -2,6 +2,19 @@ import clientPromise from '@/lib/mongodb';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { NextResponse } from 'next/server';
+import rateLimiter from '@/lib/rate-limit';
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+
+const window = new JSDOM('').window;
+const DOMPurify = createDOMPurify(window);
+
+const sanitizeInput = (input) => {
+  if (typeof input === 'string') {
+    return DOMPurify.sanitize(input.trim(), { ALLOWED_TAGS: [] });
+  }
+  return input;
+};
 
 export async function GET() {
   try {
@@ -12,85 +25,27 @@ export async function GET() {
 
     const client = await clientPromise;
     const db = client.db('links-site');
-    const settings = await db.collection('settings').findOne({ userId: session.user.id });
+    const user = await db.collection('users').findOne({ 
+      email: session.user.email.toLowerCase() 
+    });
 
-    if (!settings) {
-      const defaultSettings = {
-        userId: session.user.id,
-        name: session.user.name || 'Your Name',
-        username: '@username',
-        profileImage: '/default-profile.png',
-        theme: {
-          background: 'bg-[#1a1625]',
-          accent: 'violet',
-          buttonStyle: 'rounded-xl',
-          animation: 'scale'
-        }
-      };
-      await db.collection('settings').insertOne(defaultSettings);
-      return NextResponse.json(defaultSettings);
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
+
+    const settings = {
+      name: user.name || '',
+      username: user.username || '',
+      profileImage: user.profileImage || '/default-profile.png'
+    };
 
     return NextResponse.json(settings);
   } catch (error) {
-    console.error('Error in GET /api/settings:', error);
-    return NextResponse.json({ error: 'Error fetching settings: ' + error.message }, { status: 500 });
-  }
-}
-
-export async function POST(req) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.error('Error in GET /api/settings:', error);
     }
-
-    const body = await req.json();
-    
-    // Remove _id if it exists in the update data
-    const { _id, ...updateData } = body;
-    
-    const client = await clientPromise;
-    const db = client.db('links-site');
-    
-    // Get existing settings first
-    let existingSettings = await db.collection('settings').findOne({ userId: session.user.id });
-    
-    // If no existing settings, use default theme
-    if (!existingSettings) {
-      existingSettings = {
-        userId: session.user.id,
-        theme: {
-          background: 'bg-[#1a1625]',
-          accent: 'violet',
-          buttonStyle: 'rounded-xl',
-          animation: 'scale'
-        }
-      };
-    }
-    
-    // Merge existing settings with new updates
-    const updatedSettings = {
-      ...existingSettings,
-      ...updateData,
-      updatedAt: new Date(),
-      userId: session.user.id, // ensure userId is always set
-    };
-
-    // Remove _id from the update operation
-    const { _id: _, ...settingsToUpdate } = updatedSettings;
-
-    await db.collection('settings').updateOne(
-      { userId: session.user.id },
-      { $set: settingsToUpdate },
-      { upsert: true }
-    );
-
-    // Return the complete updated settings
-    return NextResponse.json(settingsToUpdate);
-  } catch (error) {
-    console.error('Error in POST /api/settings:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Error fetching settings' }, { status: 500 });
   }
 }
 
@@ -101,89 +56,75 @@ export async function PUT(request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const updates = await request.json();
-    
-    // Validate username if it's being updated
-    if (updates.username) {
-      // Remove @ if present at the start
-      updates.username = updates.username.replace(/^@/, '');
-      
-      // Add @ back
-      updates.username = `@${updates.username}`;
+    const isLimited = await rateLimiter(request);
+    if (isLimited) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
 
-      // Validate username format
-      if (!/^@[\w\d_-]+$/.test(updates.username)) {
-        return NextResponse.json({ 
-          error: 'Username can only contain letters, numbers, underscores, and dashes' 
+    const body = await request.json();
+    const updates = {};
+
+    if (body.username !== undefined) {
+      const username = sanitizeInput(body.username);
+
+      if (!username || typeof username !== 'string') {
+        return NextResponse.json({ error: 'Username is required' }, { status: 400 });
+      }
+
+      if (username.length < 3 || username.length > 30) {
+        return NextResponse.json({
+          error: 'Username must be between 3 and 30 characters long'
         }, { status: 400 });
       }
 
-      if (updates.username.length < 3) {
-        return NextResponse.json({ 
-          error: 'Username must be at least 3 characters long' 
+      const usernameRegex = /^[a-zA-Z0-9_]+$/;
+      if (!usernameRegex.test(username)) {
+        return NextResponse.json({
+          error: 'Username can only contain letters, numbers, and underscores'
         }, { status: 400 });
       }
 
-      if (updates.username.length > 30) {
-        return NextResponse.json({ 
-          error: 'Username cannot be longer than 30 characters' 
-        }, { status: 400 });
-      }
-
-      // Check if username is already taken
       const client = await clientPromise;
       const db = client.db('links-site');
-      
-      const existingUser = await db.collection('settings').findOne({
-        username: updates.username,
-        userId: { $ne: session.user.id } // Exclude current user
+      const existingUser = await db.collection('users').findOne({
+        username: username.toLowerCase()
       });
 
-      if (existingUser) {
-        return NextResponse.json({ 
-          error: 'Username is already taken' 
+      if (existingUser && existingUser._id.toString() !== session.user.id) {
+        return NextResponse.json({
+          error: 'Username already taken'
         }, { status: 400 });
       }
+
+      updates.username = username.toLowerCase();
+    }
+
+    if (body.name !== undefined) {
+      updates.name = sanitizeInput(body.name);
+    }
+
+    if (body.profileImage !== undefined) {
+      updates.profileImage = sanitizeInput(body.profileImage);
     }
 
     const client = await clientPromise;
     const db = client.db('links-site');
-    
-    // Get existing settings
-    const existingSettings = await db.collection('settings').findOne({ userId: session.user.id });
-    
-    if (!existingSettings) {
-      return NextResponse.json({ error: 'Settings not found' }, { status: 404 });
-    }
 
-    // Merge updates with existing settings
-    const updatedSettings = {
-      ...existingSettings,
-      ...updates,
-      // If name is being updated, also update displayName
-      ...(updates.name ? { displayName: updates.name } : {}),
-      updatedAt: new Date(),
-      userId: session.user.id
-    };
-
-    // Remove _id before update
-    const { _id, ...settingsToUpdate } = updatedSettings;
-
-    // Update settings
-    await db.collection('settings').updateOne(
-      { userId: session.user.id },
-      { $set: settingsToUpdate }
+    const result = await db.collection('users').updateOne(
+      { email: session.user.email.toLowerCase() },
+      { $set: updates }
     );
 
-    // Verify the update
-    const verifiedSettings = await db.collection('settings').findOne({ userId: session.user.id });
+    if (result.modifiedCount === 0) {
+      return NextResponse.json({ error: 'Failed to update settings' }, { status: 400 });
+    }
 
-    return NextResponse.json({ 
-      message: 'Settings updated successfully',
-      settings: verifiedSettings
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error in PUT /api/settings:', error);
-    return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console
+      console.error('Error in PUT /api/settings:', error);
+    }
+    return NextResponse.json({ error: 'Error updating settings' }, { status: 500 });
   }
 }

@@ -13,7 +13,7 @@ export const authOptions = {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" }
       },
-      async authorize(credentials, req) {
+      async authorize(credentials) {
         try {
           if (!credentials?.email || !credentials?.password) {
             throw new Error('Please provide both email and password');
@@ -45,8 +45,11 @@ export const authOptions = {
             isAdmin: user.isAdmin || false
           };
         } catch (error) {
-          console.error('Authorization error:', error);
-          throw error;
+          if (process.env.NODE_ENV === 'development') {
+            // eslint-disable-next-line no-console
+            console.error('Authorization error:', error);
+          }
+          throw new Error('Invalid credentials');
         }
       }
     })
@@ -59,9 +62,10 @@ export const authOptions = {
   session: {
     strategy: 'jwt',
     maxAge: 24 * 60 * 60, // 24 hours
+    secure: process.env.NODE_ENV === 'production',
   },
   callbacks: {
-    async jwt({ token, user, account, profile, trigger }) {
+    async jwt({ token, user, trigger }) {
       if (trigger === 'signIn' && user) {
         token.id = user.id;
         token.email = user.email;
@@ -78,24 +82,11 @@ export const authOptions = {
         session.user.isAdmin = token.isAdmin;
       }
       return session;
-    },
-    async redirect({ url, baseUrl }) {
-      // Allows relative callback URLs
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
-      // Allows callback URLs on the same origin
-      else if (new URL(url).origin === baseUrl) return url;
-      return baseUrl;
     }
   },
-  events: {
-    async signOut({ token, session }) {
-      // Clear any custom client-side state here if needed
-    }
-  },
-  debug: process.env.NODE_ENV === 'development',
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };

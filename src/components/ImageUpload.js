@@ -1,133 +1,246 @@
-import { useState, useRef } from 'react';
+'use client';
+
+import { useState, useCallback, useRef } from 'react';
 import Image from 'next/image';
 
-const DEFAULT_PROFILE_IMAGE = '/default-profile.png';
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
-export default function ImageUpload({ currentImage, onImageChange, accent = 'violet' }) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
+export default function ImageUpload({ currentImage, onImageChange }) {
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  const fileInputRef = useRef(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const timeoutRef = useRef(null);
 
-  const displayImage = currentImage || DEFAULT_PROFILE_IMAGE;
-
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setIsDragging(true);
-    } else if (e.type === 'dragleave') {
-      setIsDragging(false);
+  const validateFile = useCallback((file) => {
+    if (!file) {
+      return 'No file selected';
     }
-  };
-
-  const handleDrop = async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    setError('');
-
-    const files = e.dataTransfer.files;
-    if (files && files[0]) {
-      await uploadImage(files[0]);
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      return 'Only JPEG, PNG and WebP images are allowed';
     }
-  };
-
-  const handleFileSelect = async (e) => {
-    const files = e.target.files;
-    if (files && files[0]) {
-      await uploadImage(files[0]);
+    if (file.size > MAX_SIZE) {
+      return 'Image must be less than 5MB';
     }
-  };
+    return null;
+  }, []);
 
-  const uploadImage = async (file) => {
-    // Reset error state
-    setError('');
+  const createPreview = useCallback((file) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      setError('Please upload an image file');
+  const handleImageUpload = useCallback(async (file) => {
+    const validationError = validateFile(file);
+    if (validationError) {
+      setError(validationError);
       return;
     }
-
-    // Validate file size (5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setError('Image size should be less than 5MB');
-      return;
-    }
-
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
 
     try {
+      setUploading(true);
+      setError('');
+      createPreview(file);
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // Simulate upload progress
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval);
+            return prev;
+          }
+          return prev + 10;
+        });
+      }, 200);
+
       const response = await fetch('/api/upload', {
         method: 'POST',
-        body: formData,
+        body: formData
       });
 
+      clearInterval(progressInterval);
+
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to upload image');
       }
 
+      setUploadProgress(100);
       const data = await response.json();
-      onImageChange(data.filename);
-      setError('');
+      onImageChange(data.url);
+      
+      timeoutRef.current = setTimeout(() => {
+        setPreview(null);
+        setUploadProgress(0);
+      }, 1000);
+
     } catch (error) {
-      console.error('Error uploading image:', error);
       setError(error.message || 'Failed to upload image. Please try again.');
+      if (process.env.NODE_ENV === 'development') {
+        // eslint-disable-next-line no-console
+        console.error('Image upload error:', error);
+      }
     } finally {
-      setIsUploading(false);
+      setUploading(false);
     }
-  };
+  }, [validateFile, createPreview, onImageChange]);
+
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const file = e.dataTransfer?.files[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+  }, [handleImageUpload]);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
 
   return (
-    <div className="space-y-4">
+    <div className="relative max-w-sm mx-auto">
       <div
-        onClick={() => fileInputRef.current?.click()}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
+        className={`
+          group relative w-40 h-40 mx-auto
+          border-3 border-dashed rounded-full
+          overflow-hidden cursor-pointer
+          transition-all duration-300 ease-in-out
+          ${isDragging 
+            ? 'border-violet-400 bg-violet-400/10 scale-105' 
+            : error 
+              ? 'border-red-400 bg-red-400/5' 
+              : 'border-white/20 hover:border-violet-400/50 hover:bg-violet-400/5'
+          }
+        `}
         onDrop={handleDrop}
-        className={`relative group cursor-pointer rounded-2xl aspect-square max-w-[200px] mx-auto overflow-hidden border-2 transition-all ${
-          isDragging
-            ? `border-${accent}-400 bg-${accent}-400/10`
-            : error
-            ? 'border-red-500 bg-red-500/5'
-            : 'border-white/10 hover:border-white/30'
-        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
       >
         <Image
-          src={displayImage}
-          alt="Profile"
+          src={preview || currentImage || '/default-profile.png'}
+          alt="Profile Picture"
           fill
-          className="object-cover"
-          sizes="200px"
-          priority
+          className={`
+            object-cover transition-transform duration-300
+            ${isDragging ? 'scale-105 opacity-50' : 'group-hover:scale-105'}
+          `}
         />
-        <div className={`absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity`}>
-          <p className="text-white text-sm font-medium">Change Image</p>
+
+        <div className={`
+          absolute inset-0 flex flex-col items-center justify-center
+          bg-black/0 group-hover:bg-black/40
+          transition-all duration-300
+          ${isDragging ? 'bg-black/40' : ''}
+        `}>
+          <svg
+            className={`w-8 h-8 mb-2 transition-all duration-300
+              ${isDragging ? 'scale-110 text-violet-400' : 'text-white/0 group-hover:text-white/90'}
+            `}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+            />
+          </svg>
+          <span className={`
+            text-sm font-medium transition-all duration-300
+            ${isDragging ? 'text-violet-400' : 'text-white/0 group-hover:text-white/90'}
+          `}>
+            Drop to upload
+          </span>
         </div>
-        {isUploading && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <div className={`w-8 h-8 border-2 border-white border-t-${accent}-400 rounded-full animate-spin`} />
+
+        {uploading && (
+          <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center">
+            <div className="w-20 h-20 relative">
+              <svg className="animate-spin w-full h-full text-violet-400" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <circle
+                  className="opacity-75"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                  strokeDasharray={Math.PI * 20}
+                  strokeDashoffset={(Math.PI * 20) * (1 - uploadProgress / 100)}
+                  transform="rotate(-90 12 12)"
+                />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
+                {uploadProgress}%
+              </span>
+            </div>
           </div>
         )}
       </div>
+
       <input
-        ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/gif,image/webp"
-        onChange={handleFileSelect}
+        id="imageUpload"
         className="hidden"
+        accept={ALLOWED_TYPES.join(',')}
         data-testid="file-input"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            handleImageUpload(file);
+          }
+        }}
       />
-      {error ? (
-        <p className="text-red-500 text-sm text-center">{error}</p>
-      ) : (
-        <p className="text-white/50 text-sm text-center">
-          Supports JPG, PNG, GIF and WebP (max 5MB)
+
+      <label
+        htmlFor="imageUpload"
+        className={`
+          block mt-4 text-sm text-center
+          py-2 px-4 rounded-lg
+          transition-all duration-300
+          ${error 
+            ? 'text-red-400 hover:text-red-300' 
+            : 'text-white/70 hover:text-white hover:bg-white/5'}
+          cursor-pointer
+        `}
+      >
+        {error ? 'Try again' : 'Choose image'}
+      </label>
+
+      <p className="mt-2 text-xs text-center text-white/50">
+        JPEG, PNG or WebP, max 5MB
+      </p>
+
+      {error && (
+        <p className="mt-2 text-sm text-red-400 text-center animate-fadeIn" data-testid="error-message">
+          {error}
         </p>
       )}
     </div>

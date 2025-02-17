@@ -1,50 +1,22 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Image from "next/image";
-import Link from "next/link";
-import LinkItem from "../components/LinkItem";
 import { useSession } from 'next-auth/react';
-
-const DEFAULT_PROFILE_IMAGE = '/default-profile.png';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const { data: session, status } = useSession();
-  const [links, setLinks] = useState([]);
-  const [settings, setSettings] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [settingsRes, linksRes] = await Promise.all([
-          fetch('/api/settings'),
-          fetch('/api/links')
-        ]);
+  const handleSettingsNavigation = (tab) => {
+    router.push('/settings');
+    setTimeout(() => {
+      window.location.hash = tab;
+      window.scrollTo(0, 0);
+    }, 100);
+  };
 
-        if (settingsRes.ok && linksRes.ok) {
-          const [settingsData, linksData] = await Promise.all([
-            settingsRes.json(),
-            linksRes.json()
-          ]);
-          setSettings(settingsData);
-          setLinks(linksData);
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (status === 'authenticated') {
-      fetchData();
-    } else if (status === 'unauthenticated') {
-      setLoading(false);
-    }
-  }, [status]);
-
-  if (loading) {
+  if (status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#1a1625]">
         <div className="w-8 h-8 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
@@ -52,85 +24,114 @@ export default function Home() {
     );
   }
 
-  if (status === 'unauthenticated') {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#1a1625] py-16 px-4">
-        <h1 className="text-3xl font-bold text-white mb-8">Welcome to Links Site</h1>
-        <div className="space-y-4">
-          <Link
-            href="/auth/signin"
-            className="block px-6 py-3 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors text-center"
-          >
-            Sign In
-          </Link>
-          <Link
-            href="/auth/register"
-            className="block px-6 py-3 bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors text-center"
-          >
-            Register
-          </Link>
+  return (
+    <div className="min-h-screen bg-[#1a1625]">
+      
+      {/* Hero Section */}
+      <div className="pt-24 pb-16 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            <div className="space-y-8">
+              <h1 className="text-5xl font-bold text-white leading-tight">
+                Create Your Perfect <span className="text-violet-400">Link Page</span>
+              </h1>
+              <p className="text-xl text-gray-400">
+                Share all your important links in one beautiful, customizable page. Perfect for creators, professionals, and anyone who wants to share more with their audience.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                {status === 'authenticated' ? (
+                  <>
+                    {session?.user?.username ? (
+                      <Link
+                        href={`/${session.user.username}`}
+                        className="px-8 py-4 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors font-medium"
+                      >
+                        View My Page
+                      </Link>
+                    ) : (
+                      <Link
+                        href="/settings#profile"
+                        className="px-8 py-4 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors font-medium"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleSettingsNavigation('profile');
+                        }}
+                      >
+                        Create My Page
+                      </Link>
+                    )}
+                    <Link
+                      href="/settings#appearance"
+                      className="px-8 py-4 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-colors font-medium"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleSettingsNavigation('appearance');
+                      }}
+                    >
+                      Customize Theme
+                    </Link>
+                  </>
+                ) : (
+                  <Link
+                    href="/auth/signin"
+                    className="px-8 py-4 bg-violet-600 text-white rounded-xl hover:bg-violet-700 transition-colors font-medium"
+                  >
+                    Get Started
+                  </Link>
+                )}
+              </div>
+            </div>
+            <div className="relative h-[600px] hidden md:block">
+              <div className="absolute inset-0 bg-gradient-to-tr from-violet-600/20 to-transparent rounded-3xl">
+                <div className="absolute inset-0 backdrop-blur-3xl rounded-3xl"></div>
+              </div>
+              {/* Add a mockup or illustration here */}
+              <div className="relative h-full flex items-center justify-center">
+                <div className="w-[280px] h-[560px] bg-black/40 rounded-[40px] border-4 border-white/10 p-4">
+                  <div className="w-full h-full bg-[#1a1625] rounded-[32px] p-6">
+                    <div className="space-y-4">
+                      <div className="w-20 h-20 bg-violet-500/20 rounded-full mx-auto"></div>
+                      <div className="h-6 bg-violet-500/20 rounded-full w-32 mx-auto"></div>
+                      <div className="h-4 bg-violet-500/10 rounded-full w-24 mx-auto"></div>
+                      <div className="space-y-3 mt-8">
+                        {[...Array(4)].map((_, i) => (
+                          <div key={i} className="h-12 bg-violet-500/10 rounded-xl"></div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    );
-  }
 
-  if (!settings) return null;
-
-  const getAnimationClass = () => {
-    switch (settings.theme.animation) {
-      case 'scale':
-        return 'hover:scale-[1.02]';
-      case 'slide':
-        return 'hover:translate-x-2';
-      case 'glow':
-        return 'hover:shadow-lg hover:shadow-violet-500/20';
-      default:
-        return 'hover:scale-[1.02]';
-    }
-  };
-
-  const displayName = settings?.displayName || settings?.name || 'Your Name';
-
-  return (
-    <div className={`min-h-screen py-16 px-4 ${settings.theme.background}`}>
-      <div className="max-w-md mx-auto space-y-8">
-        <div className="text-center space-y-4">
-          <div className="relative w-32 h-32 mx-auto">
-            <Image
-              src={settings.profileImage || DEFAULT_PROFILE_IMAGE}
-              alt="Profile Picture"
-              fill
-              className={`rounded-full object-cover border-2 border-${settings.theme.accent}-400/20`}
-            />
+      {/* Features Section */}
+      <div className="py-16 px-4 bg-black/20">
+        <div className="max-w-7xl mx-auto">
+          <h2 className="text-3xl font-bold text-white text-center mb-12">Features</h2>
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                title: 'Custom Themes',
+                description: 'Choose from a variety of themes and colors to match your brand.'
+              },
+              {
+                title: 'Analytics',
+                description: 'Track your page views and link clicks to understand your audience.'
+              },
+              {
+                title: 'Easy to Use',
+                description: 'Simple interface to manage your links and customize your page.'
+              }
+            ].map((feature, i) => (
+              <div key={i} className="p-6 bg-white/5 rounded-xl hover:bg-white/10 transition-colors">
+                <h3 className="text-xl font-semibold text-white mb-3">{feature.title}</h3>
+                <p className="text-gray-400">{feature.description}</p>
+              </div>
+            ))}
           </div>
-          <div>
-            <h1 className={`text-2xl font-bold text-${settings.theme.accent}-200`}>
-              {displayName}
-            </h1>
-            <p className={`text-${settings.theme.accent}-400`}>{settings.username}</p>
-          </div>
-        </div>
-        
-        <div className="space-y-4 px-4">
-          {links.map((link, index) => (
-            <LinkItem
-              key={index}
-              title={link.title}
-              url={link.url}
-              bgColor={link.bgColor}
-              hoverColor={link.hoverColor}
-              buttonStyle={settings.theme.buttonStyle}
-              animation={getAnimationClass()}
-              icon={link.icon}
-              iconPosition={link.iconPosition}
-              textColor={link.textColor}
-              fontSize={link.fontSize}
-              fontWeight={link.fontWeight}
-              opacity={link.opacity}
-              border={link.border}
-              shadow={link.shadow}
-            />
-          ))}
         </div>
       </div>
     </div>

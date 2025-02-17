@@ -1,222 +1,155 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import ImageUpload from '@/components/ImageUpload';
 import AddLinkForm from '@/components/AddLinkForm';
 import LinkItem from '@/components/LinkItem';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import debounce from 'lodash/debounce';
+import useSWR from 'swr';
 
-const DEFAULT_PROFILE_IMAGE = '/default-profile.png';
+const fetcher = async (...args) => {
+  const res = await fetch(...args);
+  if (!res.ok) {
+    const error = new Error('Failed to fetch data');
+    error.info = await res.json();
+    error.status = res.status;
+    throw error;
+  }
+  return res.json();
+};
 
 export default function Settings() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
-  const [links, setLinks] = useState([]);
-  const [settings, setSettings] = useState(null);
   const [editingLink, setEditingLink] = useState(null);
-  const [newLink, setNewLink] = useState({ 
-    title: '', 
-    url: '', 
-    bgColor: 'bg-violet-500',
-    icon: '',
-    iconPosition: 'left',
-    textColor: 'text-white',
-    fontSize: 'text-base',
-    fontWeight: 'font-medium',
-    opacity: 100,
-    border: '',
-    shadow: ''
-  });
   const [activeTab, setActiveTab] = useState('profile');
-  const [loading, setLoading] = useState(true);
-  const [displayName, setDisplayName] = useState('');
-  const [username, setUsername] = useState('');
-  const [usernameError, setUsernameError] = useState('');
-  const [usernameLastUpdated, setUsernameLastUpdated] = useState(null);
-  const [usernameCooldown, setUsernameCooldown] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    username: ''
+  });
+  const [profileCooldown, setProfileCooldown] = useState(false);
+  const [settingsCooldown, setSettingsCooldown] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
 
-  const updateDisplayName = useCallback(
-    debounce(async (newName) => {
-      try {
-        const response = await fetch('/api/settings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            name: newName
-          })
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to update name');
-        }
-        
-        const { settings: updatedSettings } = await response.json();
-        setSettings(updatedSettings);
-        setDisplayName(newName);
-        
-        // Force a refresh to update the session
-        router.refresh();
-      } catch (error) {
-        console.error('Error updating display name:', error);
-      }
-    }, 500),
-    [router]
-  );
-
-  const updateUsername = useCallback(
-    debounce(async (newUsername) => {
-      try {
-        setUsernameError(''); // Clear any previous errors
-
-        // Check cooldown (5 minutes)
-        const COOLDOWN_MINUTES = 5;
-        if (usernameLastUpdated) {
-          const timeSinceLastUpdate = (new Date() - new Date(usernameLastUpdated)) / 1000 / 60; // in minutes
-          if (timeSinceLastUpdate < COOLDOWN_MINUTES) {
-            setUsernameCooldown(true);
-            setUsernameError(`Please wait ${Math.ceil(COOLDOWN_MINUTES - timeSinceLastUpdate)} minutes before changing username again`);
-            return;
-          }
-        }
-
-        const response = await fetch('/api/settings', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            username: newUsername
-          })
-        });
-        
-        if (!response.ok) {
-          const data = await response.json();
-          setUsernameError(data.error);
-          return;
-        }
-        
-        const { settings: updatedSettings } = await response.json();
-        setSettings(updatedSettings);
-        setUsername(newUsername);
-        setUsernameLastUpdated(new Date().toISOString());
-        setUsernameCooldown(false);
-        
-        // Force a refresh to update the session
-        router.refresh();
-      } catch (error) {
-        console.error('Error updating username:', error);
-        setUsernameError('Failed to update username');
-      }
-    }, 500),
-    [router, usernameLastUpdated]
-  );
+  const { data: settings, mutate: mutateSettings, isLoading: settingsLoading } = useSWR('/api/settings', fetcher);
+  const { data: links = [], mutate: mutateLinks, isLoading: linksLoading } = useSWR('/api/links', fetcher);
 
   useEffect(() => {
-    if (settings?.name) {
-      setDisplayName(settings.name);
+    if (settings) {
+      setFormData({
+        name: settings.name || '',
+        username: settings.username || ''
+      });
     }
-  }, [settings?.name]);
+  }, [settings]);
 
   useEffect(() => {
-    if (settings?.username) {
-      setUsername(settings.username);
-    }
-  }, [settings?.username]);
+    const hasNameChange = formData.name !== settings?.name;
+    const hasUsernameChange = formData.username !== settings?.username;
+    setHasChanges(hasNameChange || hasUsernameChange);
+  }, [formData, settings]);
 
-  useEffect(() => {
-    if (status === 'unauthenticated') {
-      router.push('/auth/signin');
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    setError('');
+  };
+
+  const handleSaveChanges = async () => {
+    if (settingsCooldown) {
+      setError('Please wait 5 minutes before updating name/username');
       return;
     }
 
-    const fetchData = async () => {
-      try {
-        const [settingsRes, linksRes] = await Promise.all([
-          fetch('/api/settings'),
-          fetch('/api/links')
-        ]);
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
 
-        if (settingsRes.ok && linksRes.ok) {
-          const [settingsData, linksData] = await Promise.all([
-            settingsRes.json(),
-            linksRes.json()
-          ]);
-          setSettings(settingsData);
-          setLinks(linksData);
-        }
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update settings');
       }
-    };
 
-    if (status === 'authenticated') {
-      fetchData();
+      mutateSettings();
+      router.refresh();
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+      
+      setSettingsCooldown(true);
+      setTimeout(() => setSettingsCooldown(false), 5 * 60 * 1000);
+    } catch (error) {
+      setError(error.message);
     }
-  }, [status, router]);
+  };
 
-  useEffect(() => {
-    const lastUpdated = localStorage.getItem('usernameLastUpdated');
-    if (lastUpdated) {
-      setUsernameLastUpdated(lastUpdated);
+  const handleImageChange = async (imageUrl) => {
+    if (profileCooldown) {
+      setError('Please wait 5 minutes before updating profile image');
+      return;
     }
-  }, []);
 
-  useEffect(() => {
-    if (usernameLastUpdated) {
-      localStorage.setItem('usernameLastUpdated', usernameLastUpdated);
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileImage: imageUrl })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update profile image');
+      }
+
+      mutateSettings();
+      router.refresh();
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+      
+      setProfileCooldown(true);
+      setTimeout(() => setProfileCooldown(false), 5 * 60 * 1000);
+    } catch (error) {
+      setError(error.message);
     }
-  }, [usernameLastUpdated]);
-
-  if (loading || !settings) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#1a1625]">
-        <div className="w-8 h-8 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  };
 
   const saveLinks = async (updatedLinks) => {
     try {
+      setError('');
       const response = await fetch('/api/links', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updatedLinks),
       });
-      if (response.ok) {
-        const data = await response.json();
-        setLinks(data);
-      }
-    } catch (error) {
-      console.error('Error saving links:', error);
-    }
-  };
 
-  const saveSettings = async (newSettings) => {
-    try {
-      const response = await fetch('/api/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setSettings(data);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save links');
       }
+
+      await mutateLinks();
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
     } catch (error) {
-      console.error('Error saving settings:', error);
+      setError(error.message || 'Failed to save links');
     }
   };
 
   const handleAddLink = (link) => {
     const linkToAdd = {
       ...link,
-      url: link.url.startsWith('http') ? link.url : `https://${link.url}`,
-      hoverColor: link.bgColor.replace('bg-', 'hover:bg-').replace('500', '600')
+      url: link.url.startsWith('http') ? link.url : `https://${link.url}`
     };
-    
+
     saveLinks([...links, linkToAdd]);
   };
 
@@ -224,8 +157,7 @@ export default function Settings() {
     const updatedLinks = [...links];
     updatedLinks[editingLink.index] = {
       ...updatedLink,
-      url: updatedLink.url.startsWith('http') ? updatedLink.url : `https://${updatedLink.url}`,
-      hoverColor: updatedLink.bgColor.replace('bg-', 'hover:bg-').replace('500', '600')
+      url: updatedLink.url.startsWith('http') ? updatedLink.url : `https://${updatedLink.url}`
     };
     saveLinks(updatedLinks);
     setEditingLink(null);
@@ -240,69 +172,65 @@ export default function Settings() {
     saveLinks(updatedLinks);
   };
 
-  const updateSetting = (key, value) => {
-    const updatedSettings = { 
-      ...settings, 
-      theme: { ...settings.theme, [key]: value }
-    };
-    saveSettings(updatedSettings);
+  const handleTabChange = (tabId) => {
+    setActiveTab(tabId);
+    window.history.pushState(null, '', `#${tabId}`);
   };
 
-  const handleImageChange = (imageUrl) => {
-    saveSettings({ ...settings, profileImage: imageUrl });
-  };
+  if (status === 'unauthenticated') {
+    router.push('/auth/signin');
+    return;
+  }
 
-  const themes = [
-    { name: 'Dark Purple', value: 'bg-[#1a1625]' },
-    { name: 'Deep Ocean', value: 'bg-[#1a202c]' },
-    { name: 'Midnight', value: 'bg-[#111827]' },
-    { name: 'Forest', value: 'bg-[#064e3b]' },
-    { name: 'Royal', value: 'bg-[#1e1b4b]' }
-  ];
+  if (settingsLoading || linksLoading) {
+    return (
+      <div className="page">
+        <div className="container flex items-center justify-center">
+          <div className="w-8 h-8 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      </div>
+    );
+  }
 
-  const accents = ['violet', 'blue', 'emerald', 'amber', 'rose'];
-  const buttonStyles = [
-    { name: 'Rounded', value: 'rounded-xl' },
-    { name: 'Pill', value: 'rounded-full' },
-    { name: 'Subtle', value: 'rounded-lg' },
-    { name: 'Sharp', value: 'rounded-none' }
-  ];
-  const animations = [
-    { name: 'Scale', value: 'scale' },
-    { name: 'Slide', value: 'slide' },
-    { name: 'Glow', value: 'glow' }
-  ];
+  if (!settings) {
+    return (
+      <div className="page">
+        <div className="container flex flex-col items-center justify-center">
+          <h1 className="title mb-4">Error Loading Settings</h1>
+          <p className="text-gray-400 mb-8">Unable to load your settings. Please try again.</p>
+          <button onClick={() => mutateSettings()} className="btn-primary">
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const tabs = [
     { id: 'profile', name: 'Profile' },
-    { id: 'appearance', name: 'Appearance' },
     { id: 'links', name: 'Links' }
   ];
 
   return (
-    <div className={`min-h-screen ${settings.theme.background} text-white py-8 px-4`}>
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className={`text-3xl font-bold text-${settings.theme.accent}-200`}>Settings</h1>
-          <Link 
-            href="/"
-            className={`px-6 py-2.5 ${settings.theme.buttonStyle} bg-${settings.theme.accent}-600 hover:bg-${settings.theme.accent}-700 transition-colors text-white font-medium`}
+    <div className="page">
+      <div className="container">
+        <div className="header">
+          <h1 className="title">Settings</h1>
+          <Link
+            href={`/${settings.username}`}
+            prefetch={false}
+            className="btn-primary"
           >
             Back to Profile
           </Link>
         </div>
 
-        {/* Tabs */}
-        <div className="flex space-x-1 bg-white/5 p-1 rounded-lg mb-8">
+        <div className="tabs">
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 py-2.5 text-sm font-medium rounded-md transition-colors ${
-                activeTab === tab.id 
-                  ? `bg-${settings.theme.accent}-600 text-white` 
-                  : 'text-white/70 hover:text-white hover:bg-white/5'
-              }`}
+              onClick={() => handleTabChange(tab.id)}
+              className={`tab ${activeTab === tab.id ? 'tab-active' : 'tab-inactive'}`}
             >
               {tab.name}
             </button>
@@ -310,141 +238,66 @@ export default function Settings() {
         </div>
 
         <div className="grid grid-cols-1 gap-8">
-          {/* Profile Settings */}
           {activeTab === 'profile' && (
-            <div className="bg-white/5 rounded-xl p-8">
-              <h2 className="text-xl font-semibold mb-6">Profile Settings</h2>
+            <div className="card">
+              <h2 className="card-title">Profile Settings</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div>
                   <h3 className="text-lg font-medium mb-4">Profile Picture</h3>
                   <ImageUpload
                     currentImage={settings.profileImage}
                     onImageChange={handleImageChange}
-                    accent={settings.theme.accent}
+                    accent="violet"
                   />
                 </div>
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Display Name</label>
+                    <label className="label">Display Name</label>
                     <input
                       type="text"
-                      value={displayName}
-                      onChange={(e) => {
-                        setDisplayName(e.target.value);
-                        updateDisplayName(e.target.value);
-                      }}
-                      className="w-full p-3 rounded-lg bg-black/20 border border-white/10 focus:border-violet-400 outline-none"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleInputChange}
+                      className="input"
                       placeholder="Enter your name"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Username</label>
+                    <label className="label">Username</label>
                     <input
                       type="text"
-                      value={username}
-                      onChange={(e) => {
-                        setUsername(e.target.value);
-                        if (!usernameCooldown) {
-                          updateUsername(e.target.value);
-                        }
-                      }}
-                      className={`w-full p-3 rounded-lg bg-black/20 border ${
-                        usernameError ? 'border-red-500' : 'border-white/10'
-                      } focus:border-violet-400 outline-none`}
-                      placeholder="@username"
-                      disabled={usernameCooldown}
+                      name="username"
+                      value={formData.username}
+                      onChange={handleInputChange}
+                      className={`input ${error ? 'input-error' : ''}`}
+                      placeholder="username"
+                      disabled={settingsCooldown}
                     />
-                    {usernameError && (
-                      <p className="mt-2 text-sm text-red-400">{usernameError}</p>
-                    )}
-                    {usernameCooldown && (
-                      <p className="mt-2 text-sm text-yellow-400">
-                        Username is on cooldown
-                      </p>
-                    )}
                   </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Appearance Settings */}
-          {activeTab === 'appearance' && (
-            <div className="space-y-8">
-              <div className="bg-white/5 rounded-xl p-8">
-                <h2 className="text-xl font-semibold mb-6">Theme Settings</h2>
-                <div className="space-y-8">
-                  <div>
-                    <label className="block text-sm font-medium mb-4">Background Theme</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                      {themes.map((theme) => (
-                        <button
-                          key={theme.value}
-                          onClick={() => updateSetting('background', theme.value)}
-                          className={`p-4 rounded-lg ${theme.value} border-2 transition-all ${
-                            settings.theme.background === theme.value
-                              ? `border-${settings.theme.accent}-400 scale-[1.02]`
-                              : 'border-transparent hover:border-white/20'
-                          }`}
-                        >
-                          {theme.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-4">Accent Color</label>
-                    <div className="flex gap-3">
-                      {accents.map((color) => (
-                        <button
-                          key={color}
-                          onClick={() => updateSetting('accent', color)}
-                          className={`w-12 h-12 rounded-full bg-${color}-500 transition-transform ${
-                            settings.theme.accent === color
-                              ? 'ring-2 ring-offset-4 ring-offset-[#1a1625] ring-white scale-110'
-                              : 'hover:scale-105'
-                          }`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-4">Button Style</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {buttonStyles.map((style) => (
-                        <button
-                          key={style.value}
-                          onClick={() => updateSetting('buttonStyle', style.value)}
-                          className={`p-3 ${style.value} border-2 transition-all ${
-                            settings.theme.buttonStyle === style.value
-                              ? `border-${settings.theme.accent}-400 bg-${settings.theme.accent}-600`
-                              : 'border-white/10 hover:border-white/30'
-                          }`}
-                        >
-                          {style.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-4">Button Animation</label>
-                    <div className="grid grid-cols-3 gap-3">
-                      {animations.map((anim) => (
-                        <button
-                          key={anim.value}
-                          onClick={() => updateSetting('animation', anim.value)}
-                          className={`p-3 rounded-lg border-2 transition-all ${
-                            settings.theme.animation === anim.value
-                              ? `border-${settings.theme.accent}-400 bg-${settings.theme.accent}-600`
-                              : 'border-white/10 hover:border-white/30'
-                          }`}
-                        >
-                          {anim.name}
-                        </button>
-                      ))}
+                  <div className="mt-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        {error && (
+                          <p className="text-error">{error}</p>
+                        )}
+                        {success && (
+                          <p className="text-success">
+                            Settings updated successfully
+                          </p>
+                        )}
+                        {(settingsCooldown || profileCooldown) && !error && !success && (
+                          <p className="text-warning">
+                            Changes are limited to once every 5 minutes
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={handleSaveChanges}
+                        disabled={settingsCooldown || !hasChanges}
+                        className={settingsCooldown || !hasChanges ? 'btn-disabled' : 'btn-primary'}
+                      >
+                        Save Changes
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -452,25 +305,32 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Links Management */}
           {activeTab === 'links' && (
             <div className="space-y-6">
-              {/* Add New Link Form */}
-              <div className="bg-white/5 rounded-xl p-6">
-                <h2 className="text-xl font-semibold mb-4">Add New Link</h2>
+              <div className="card">
+                <h2 className="card-title">Add New Link</h2>
                 <AddLinkForm onAddLink={handleAddLink} />
               </div>
 
-              {/* Existing Links */}
-              <div className="bg-white/5 rounded-xl p-6">
-                <h2 className="text-xl font-semibold mb-4">Your Links</h2>
+              <div className="card">
+                <h2 className="card-title">Your Links</h2>
                 <div className="space-y-4">
                   {links.map((link, index) => (
                     <div key={index} className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <LinkItem {...link} />
+                      <div className="flex items-center space-x-4 flex-grow">
+                        <LinkItem 
+                          {...link}
+                          bgColor={link.bgColor}
+                          hoverColor={link.hoverColor}
+                          textColor={link.textColor}
+                          fontSize={link.fontSize}
+                          fontWeight={link.fontWeight}
+                          opacity={link.opacity}
+                          border={link.border}
+                          shadow={link.shadow}
+                        />
                       </div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 ml-4">
                         <button
                           onClick={() => handleEditLink(link, index)}
                           className="p-2 text-white/70 hover:text-white transition-colors"
@@ -491,8 +351,8 @@ export default function Settings() {
 
               {editingLink && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-                  <div className="bg-[#1a1625] rounded-xl p-6 max-w-md w-full">
-                    <h2 className="text-xl font-semibold mb-4">Edit Link</h2>
+                  <div className="card max-w-md w-full">
+                    <h2 className="card-title">Edit Link</h2>
                     <AddLinkForm
                       initialValues={editingLink}
                       onAddLink={handleUpdateLink}
@@ -504,8 +364,6 @@ export default function Settings() {
             </div>
           )}
         </div>
-
-        {/* Edit Link Modal */}
       </div>
     </div>
   );

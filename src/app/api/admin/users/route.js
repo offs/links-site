@@ -1,97 +1,103 @@
-import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
-import { requireAdmin } from '@/lib/admin';
-import { ObjectId } from 'mongodb';
+import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '../../auth/[...nextauth]/route';
+import { authRateLimiter } from '@/lib/rate-limit';
 
-// GET /api/admin/users - Get all users
-export async function GET() {
+export async function GET(request) {
   try {
-    await requireAdmin();
-    
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.isAdmin) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+
+    const limited = await authRateLimiter(request);
+    if (!limited) {
+      return NextResponse.json(
+        { message: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
     const client = await clientPromise;
     const db = client.db('links-site');
-    const users = await db.collection('users')
-      .find({})
-      .project({
-        username: 1,
+    const users = await db.collection('users').find({}, {
+      projection: {
+        _id: 1,
         email: 1,
+        username: 1,
+        name: 1,
         isAdmin: 1,
         createdAt: 1
-      })
-      .sort({ createdAt: -1 })
-      .toArray();
+      }
+    }).toArray();
 
     return NextResponse.json(users);
   } catch (error) {
-    if (error.message.includes('Unauthorized')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Admin users fetch error:', error);
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-// PUT /api/admin/users - Update user (toggle admin status)
-export async function PUT(request) {
-  try {
-    await requireAdmin();
-    
-    const { userId, isAdmin } = await request.json();
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
-
-    const client = await clientPromise;
-    const db = client.db('links-site');
-    
-    const result = await db.collection('users').updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: { isAdmin: isAdmin } }
+    return NextResponse.json(
+      { message: 'Failed to fetch users' },
+      { status: 500 }
     );
-
-    if (result.matchedCount === 0) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    if (error.message.includes('Unauthorized')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
-    }
-    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// DELETE /api/admin/users - Delete user
 export async function DELETE(request) {
   try {
-    await requireAdmin();
-    
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.isAdmin) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+
+    const limited = await authRateLimiter(request);
+    if (!limited) {
+      return NextResponse.json(
+        { message: 'Too many requests. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
     const { userId } = await request.json();
     if (!userId) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+      return NextResponse.json(
+        { message: 'User ID is required' },
+        { status: 400 }
+      );
     }
 
     const client = await clientPromise;
     const db = client.db('links-site');
-    
-    // Delete user's links
-    await db.collection('links').deleteMany({ userId: new ObjectId(userId) });
-    
-    // Delete user's settings
-    await db.collection('settings').deleteMany({ userId: new ObjectId(userId) });
-    
-    // Delete the user
-    const result = await db.collection('users').deleteOne({ _id: new ObjectId(userId) });
+
+    // Don't allow deleting the last admin
+    const adminCount = await db.collection('users').countDocuments({ isAdmin: true });
+    const userToDelete = await db.collection('users').findOne({ _id: userId });
+
+    if (adminCount <= 1 && userToDelete?.isAdmin) {
+      return NextResponse.json(
+        { message: 'Cannot delete the last admin user' },
+        { status: 400 }
+      );
+    }
+
+    const result = await db.collection('users').deleteOne({ _id: userId });
 
     if (result.deletedCount === 0) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      return NextResponse.json(
+        { message: 'User not found' },
+        { status: 404 }
+      );
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ message: 'User deleted successfully' });
   } catch (error) {
-    if (error.message.includes('Unauthorized')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 });
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Admin user delete error:', error);
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { message: 'Failed to delete user' },
+      { status: 500 }
+    );
   }
 }

@@ -1,100 +1,107 @@
-import cloudinary from '@/lib/cloudinary';
-import clientPromise from '@/lib/mongodb';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
+import cloudinary from '@/lib/cloudinary';
+import rateLimiter from '@/lib/rate-limit';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const CLOUDINARY_CONFIG = {
+  folder: 'profile-images',
+  transformation: [
+    { width: 400, height: 400, crop: 'fill' },
+    { quality: 'auto:good' }
+  ],
+  allowed_formats: ['jpg', 'png', 'webp'],
+  resource_type: 'image'
+};
+
+function validateFile(file) {
+  if (!file) {
+    throw new Error('No file provided');
+  }
+
+  if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+    throw new Error('Invalid file type. Only JPEG, PNG and WebP images are allowed');
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error('File size exceeds 5MB limit');
+  }
+}
+
+async function fileToDataUri(file) {
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const base64Data = buffer.toString('base64');
+  return `data:${file.type};base64,${base64Data}`;
+}
 
 export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session) {
-      return new Response('Unauthorized', { status: 401 });
-    }
-
-    const data = await request.formData();
-    const file = data.get('file');
-
-    if (!file) {
-      return new Response('No file uploaded', { status: 400 });
-    }
-
-    // Validate file type
-    if (!ALLOWED_FILE_TYPES.includes(file.type)) {
-      return new Response(
-        'Invalid file type. Allowed types: JPG, PNG, GIF, WebP',
-        { status: 400 }
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
       );
     }
 
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      return new Response(
-        'File too large. Maximum size is 5MB',
-        { status: 400 }
+    const isLimited = await rateLimiter(request);
+    if (isLimited) {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again later.' },
+        { status: 429 }
       );
     }
 
-    // Convert the file to base64
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const base64File = `data:${file.type};base64,${buffer.toString('base64')}`;
+    const formData = await request.formData();
+    const file = formData.get('file');
 
     try {
-      // Upload to Cloudinary with user-specific folder and optimization
-      const result = await cloudinary.uploader.upload(base64File, {
-        folder: `profile-pictures/${session.user.id}`,
-        transformation: [
-          { width: 400, height: 400, crop: 'fill' },
-          { quality: 'auto:good' },
-          { fetch_format: 'auto' }
-        ],
-        allowed_formats: ['jpg', 'png', 'gif', 'webp'],
-        unique_filename: true,
-        overwrite: true
+      validateFile(file);
+    } catch (validationError) {
+      return NextResponse.json(
+        { error: validationError.message },
+        { status: 400 }
+      );
+    }
+
+    const dataUri = await fileToDataUri(file);
+
+    try {
+      // Verify Cloudinary configuration
+      if (!process.env.CLOUDINARY_CLOUD_NAME || 
+          !process.env.CLOUDINARY_API_KEY || 
+          !process.env.CLOUDINARY_API_SECRET) {
+        throw new Error('Cloudinary configuration is incomplete');
+      }
+
+      const result = await cloudinary.uploader.upload(dataUri, CLOUDINARY_CONFIG);
+
+      return NextResponse.json({
+        url: result.secure_url,
+        public_id: result.public_id
       });
 
-      // Update user settings in MongoDB
-      const client = await clientPromise;
-      const db = client.db('links-site');
-      
-      await db.collection('settings').updateOne(
-        { userId: session.user.id },
-        { 
-          $set: { 
-            profileImage: result.secure_url,
-            updatedAt: new Date().toISOString()
-          }
-        },
-        { upsert: true }
-      );
-
-      return new Response(
-        JSON.stringify({ 
-          filename: result.secure_url,
-          width: result.width,
-          height: result.height,
-          format: result.format
-        }),
-        {
-          status: 200,
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
     } catch (uploadError) {
-      console.error('Error uploading to Cloudinary:', uploadError);
-      return new Response(
-        'Error uploading image to cloud storage',
+      console.error('Cloudinary upload error:', uploadError);
+      
+      if (uploadError.message.includes('cloud_name')) {
+        return NextResponse.json(
+          { error: 'Cloudinary configuration error' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json(
+        { error: 'Failed to upload image. Please try again.' },
         { status: 500 }
       );
     }
   } catch (error) {
-    console.error('Error in POST /api/upload:', error);
-    return new Response(
-      'Server error processing upload',
+    console.error('Upload error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

@@ -25,21 +25,21 @@ const ICON_MAP = {
 export default function LinkItem({ 
   title, 
   url, 
-  bgColor = 'bg-violet-500', 
-  hoverColor = 'hover:bg-violet-600',
-  buttonStyle = 'rounded-xl',
-  animation = 'hover:scale-[1.02]',
   icon = null,
   iconPosition = 'left',
+  bgColor = 'bg-violet-500',
+  hoverColor = 'hover:bg-violet-600',
   textColor = 'text-white',
   fontSize = 'text-base',
   fontWeight = 'font-medium',
-  padding = 'py-4 px-6',
   opacity = 100,
   border = '',
-  shadow = ''
+  shadow = '',
+  className = ''
 }) {
   const IconComponent = icon ? ICON_MAP[icon.toLowerCase()] : null;
+  
+  const opacityClass = opacity < 100 ? `opacity-${opacity}` : '';
   
   return (
     <a
@@ -48,19 +48,15 @@ export default function LinkItem({
       rel="noopener noreferrer"
       className={`
         block w-full 
-        ${bgColor} 
-        ${hoverColor}
-        ${buttonStyle}
-        ${animation}
-        ${textColor}
-        ${fontSize}
-        ${fontWeight}
-        ${padding}
-        opacity-${opacity}
-        ${border}
-        ${shadow}
+        ${bgColor} ${hoverColor}
+        ${textColor} ${fontSize} ${fontWeight}
+        py-4 px-6
         transition-all duration-200
         flex items-center justify-center gap-2
+        ${opacityClass}
+        ${border}
+        ${shadow}
+        ${className}
       `}
     >
       {IconComponent && iconPosition === 'left' && (

@@ -2,6 +2,64 @@
 
 import { useState, useEffect } from 'react';
 
+const colors = [
+  { name: 'Blue', value: 'bg-blue-500', hover: 'hover:bg-blue-600', text: 'text-white' },
+  { name: 'Purple', value: 'bg-purple-500', hover: 'hover:bg-purple-600', text: 'text-white' },
+  { name: 'Green', value: 'bg-green-500', hover: 'hover:bg-green-600', text: 'text-white' },
+  { name: 'Red', value: 'bg-red-500', hover: 'hover:bg-red-600', text: 'text-white' },
+  { name: 'Gray', value: 'bg-gray-800', hover: 'hover:bg-gray-900', text: 'text-white' },
+  { name: 'White', value: 'bg-white', hover: 'hover:bg-gray-50', text: 'text-gray-900' },
+  { name: 'Transparent', value: 'bg-transparent', hover: 'hover:bg-white/10', text: 'text-white' },
+];
+
+const icons = [
+  { name: 'None', value: '' },
+  { name: 'GitHub', value: 'github' },
+  { name: 'Twitter', value: 'twitter' },
+  { name: 'LinkedIn', value: 'linkedin' },
+  { name: 'Instagram', value: 'instagram' },
+  { name: 'YouTube', value: 'youtube' },
+  { name: 'Twitch', value: 'twitch' },
+  { name: 'Facebook', value: 'facebook' },
+  { name: 'TikTok', value: 'tiktok' },
+  { name: 'Website', value: 'website' },
+  { name: 'Email', value: 'email' },
+  { name: 'Discord', value: 'discord' },
+  { name: 'Spotify', value: 'spotify' },
+  { name: 'Medium', value: 'medium' },
+  { name: 'Dev.to', value: 'dev' },
+  { name: 'Patreon', value: 'patreon' },
+];
+
+const fontSizes = [
+  { name: 'Small', value: 'text-sm' },
+  { name: 'Base', value: 'text-base' },
+  { name: 'Large', value: 'text-lg' },
+  { name: 'XL', value: 'text-xl' },
+];
+
+const fontWeights = [
+  { name: 'Normal', value: 'font-normal' },
+  { name: 'Medium', value: 'font-medium' },
+  { name: 'Semibold', value: 'font-semibold' },
+  { name: 'Bold', value: 'font-bold' },
+];
+
+const borders = [
+  { name: 'None', value: '' },
+  { name: 'Thin', value: 'border border-white/20' },
+  { name: 'Medium', value: 'border-2 border-white/20' },
+  { name: 'Thick', value: 'border-4 border-white/20' },
+];
+
+const shadows = [
+  { name: 'None', value: '' },
+  { name: 'Small', value: 'shadow-sm' },
+  { name: 'Medium', value: 'shadow-md' },
+  { name: 'Large', value: 'shadow-lg' },
+  { name: 'Glow', value: 'shadow-lg shadow-white/10' },
+];
+
 export default function AddLinkForm({ onAddLink, initialValues = null, onCancel = null }) {
   const [title, setTitle] = useState(initialValues?.title || '');
   const [url, setUrl] = useState(initialValues?.url || '');
@@ -9,7 +67,6 @@ export default function AddLinkForm({ onAddLink, initialValues = null, onCancel 
   const [icon, setIcon] = useState(initialValues?.icon || '');
   const [iconPosition, setIconPosition] = useState(initialValues?.iconPosition || 'left');
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [textColor, setTextColor] = useState(initialValues?.textColor || 'text-white');
   const [fontSize, setFontSize] = useState(initialValues?.fontSize || 'text-base');
   const [fontWeight, setFontWeight] = useState(initialValues?.fontWeight || 'font-medium');
   const [opacity, setOpacity] = useState(initialValues?.opacity || 100);
@@ -24,7 +81,6 @@ export default function AddLinkForm({ onAddLink, initialValues = null, onCancel 
       setBgColor(initialValues.bgColor || 'bg-violet-500');
       setIcon(initialValues.icon || '');
       setIconPosition(initialValues.iconPosition || 'left');
-      setTextColor(initialValues.textColor || 'text-white');
       setFontSize(initialValues.fontSize || 'text-base');
       setFontWeight(initialValues.fontWeight || 'font-medium');
       setOpacity(initialValues.opacity || 100);
@@ -33,67 +89,11 @@ export default function AddLinkForm({ onAddLink, initialValues = null, onCancel 
     }
   }, [initialValues]);
 
-  const colors = [
-    { name: 'Blue', value: 'bg-blue-500', hover: 'hover:bg-blue-600', text: 'text-white' },
-    { name: 'Purple', value: 'bg-purple-500', hover: 'hover:bg-purple-600', text: 'text-white' },
-    { name: 'Green', value: 'bg-green-500', hover: 'hover:bg-green-600', text: 'text-white' },
-    { name: 'Red', value: 'bg-red-500', hover: 'hover:bg-red-600', text: 'text-white' },
-    { name: 'Gray', value: 'bg-gray-800', hover: 'hover:bg-gray-900', text: 'text-white' },
-    { name: 'White', value: 'bg-white', hover: 'hover:bg-gray-50', text: 'text-gray-900' },
-    { name: 'Transparent', value: 'bg-transparent', hover: 'hover:bg-white/10', text: 'text-white' },
-  ];
-
-  const icons = [
-    { name: 'None', value: '' },
-    { name: 'GitHub', value: 'github' },
-    { name: 'Twitter', value: 'twitter' },
-    { name: 'LinkedIn', value: 'linkedin' },
-    { name: 'Instagram', value: 'instagram' },
-    { name: 'YouTube', value: 'youtube' },
-    { name: 'Twitch', value: 'twitch' },
-    { name: 'Facebook', value: 'facebook' },
-    { name: 'TikTok', value: 'tiktok' },
-    { name: 'Website', value: 'website' },
-    { name: 'Email', value: 'email' },
-    { name: 'Discord', value: 'discord' },
-    { name: 'Spotify', value: 'spotify' },
-    { name: 'Medium', value: 'medium' },
-    { name: 'Dev.to', value: 'dev' },
-    { name: 'Patreon', value: 'patreon' },
-  ];
-
-  const fontSizes = [
-    { name: 'Small', value: 'text-sm' },
-    { name: 'Base', value: 'text-base' },
-    { name: 'Large', value: 'text-lg' },
-    { name: 'XL', value: 'text-xl' },
-  ];
-
-  const fontWeights = [
-    { name: 'Normal', value: 'font-normal' },
-    { name: 'Medium', value: 'font-medium' },
-    { name: 'Semibold', value: 'font-semibold' },
-    { name: 'Bold', value: 'font-bold' },
-  ];
-
-  const borders = [
-    { name: 'None', value: '' },
-    { name: 'Thin', value: 'border border-white/20' },
-    { name: 'Medium', value: 'border-2 border-white/20' },
-    { name: 'Thick', value: 'border-4 border-white/20' },
-  ];
-
-  const shadows = [
-    { name: 'None', value: '' },
-    { name: 'Small', value: 'shadow-sm' },
-    { name: 'Medium', value: 'shadow-md' },
-    { name: 'Large', value: 'shadow-lg' },
-    { name: 'Glow', value: 'shadow-lg shadow-white/10' },
-  ];
-
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!title || !url) return;
+    if (!title || !url) {
+      return;
+    }
     
     // Find the selected color or use default values
     const selectedColor = colors.find(color => color.value === bgColor) || {

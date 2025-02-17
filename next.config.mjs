@@ -8,6 +8,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 const nextConfig = {
   poweredByHeader: false,
   compress: true,
+
   images: {
     remotePatterns: [
       {
@@ -16,8 +17,10 @@ const nextConfig = {
         pathname: '/**',
       },
     ],
-    minimumCacheTTL: 60,
+    minimumCacheTTL: 60 * 60 * 24, // 24 hours
+    formats: ['image/avif', 'image/webp'],
   },
+
   headers: async () => [
     {
       source: '/:path*',
@@ -36,7 +39,7 @@ const nextConfig = {
         },
         {
           key: 'Permissions-Policy',
-          value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+          value: 'camera=(), microphone=(), geolocation=(), interest-cohort=(), payment=(), usb=(), vr=(), accelerometer=(), gyroscope=()',
         },
         {
           key: 'X-XSS-Protection',
@@ -44,22 +47,72 @@ const nextConfig = {
         },
         {
           key: 'Content-Security-Policy',
-          value: process.env.NODE_ENV === 'production' 
-            ? "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' https://res.cloudinary.com data: blob:; font-src 'self' data:; connect-src 'self' https://res.cloudinary.com; frame-ancestors 'none';"
+          value: process.env.NODE_ENV === 'production'
+            ? [
+                "default-src 'self'",
+                "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+                "style-src 'self' 'unsafe-inline'",
+                "img-src 'self' https://res.cloudinary.com data: blob:",
+                "font-src 'self' data:",
+                "connect-src 'self' https://res.cloudinary.com",
+                "frame-ancestors 'none'",
+                "base-uri 'self'",
+                "form-action 'self'",
+                "manifest-src 'self'",
+                "upgrade-insecure-requests",
+                "block-all-mixed-content",
+              ].join('; ')
             : '',
         },
         {
           key: 'Strict-Transport-Security',
-          value: 'max-age=31536000; includeSubDomains',
+          value: 'max-age=31536000; includeSubDomains; preload',
+        },
+        {
+          key: 'X-DNS-Prefetch-Control',
+          value: 'on',
         },
       ],
     },
   ],
+
   reactStrictMode: true,
+
+  productionBrowserSourceMaps: false,
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error', 'warn'],
+    } : false,
+  },
+
+
   experimental: {
     optimizeCss: true,
     optimizePackageImports: ['react-icons'],
+    turbo: {
+      loaders: {
+        '.svg': ['@svgr/webpack'],
+      },
+    },
   },
+
+  webpack: (config, { dev, isServer }) => {
+    if (!dev && !isServer) {
+      config.optimization = {
+        ...config.optimization,
+        mergeDuplicateChunks: true,
+        minimize: true,
+        moduleIds: 'deterministic',
+      };
+    }
+    return config;
+  },
+
+  env: {
+    NEXT_PUBLIC_APP_ENV: process.env.NODE_ENV,
+  },
+
+  output: 'standalone',
 };
 
 export default withBundleAnalyzer(nextConfig);

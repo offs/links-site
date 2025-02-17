@@ -1,132 +1,154 @@
-import { PUT } from '../settings/route';
+import { GET, PUT } from '../settings/route';
+import { getServerSession } from 'next-auth';
+import clientPromise from '@/lib/mongodb';
+import rateLimiter from '@/lib/rate-limit';
 
-// Mock next/server
-jest.mock('next/server', () => ({
-  NextResponse: {
-    json: (data, init) => ({
-      status: init?.status || 200,
-      json: async () => data,
-    }),
-  },
-}));
-
-// Mock next-auth
-jest.mock('next-auth', () => ({
-  getServerSession: jest.fn(),
-}));
-
-// Mock the auth configuration
-jest.mock('../auth/[...nextauth]/route', () => ({
-  authOptions: {
-    providers: [],
-    session: { strategy: 'jwt' },
-  },
-}));
-
-// Mock MongoDB client
-jest.mock('@/lib/mongodb', () => {
-  const mockDb = {
-    collection: jest.fn().mockReturnValue({
-      findOne: jest.fn(),
-      updateOne: jest.fn(),
-    }),
-  };
-
-  const mockClientPromise = {
-    db: jest.fn().mockReturnValue(mockDb),
-  };
-
-  return {
-    __esModule: true,
-    default: mockClientPromise,
-  };
-});
+// Mock dependencies
+jest.mock('next-auth');
+jest.mock('@/lib/mongodb');
+jest.mock('@/lib/rate-limit');
 
 describe('Settings API', () => {
-  let mockRequest;
-  let mockClientPromise;
-  
-  beforeEach(() => {
-    mockRequest = {
-      json: jest.fn(),
-    };
+  let mockCollection;
+  let mockDb;
+  let mockClient;
 
-    // Get fresh instance of the mock
-    mockClientPromise = require('@/lib/mongodb').default;
+  beforeEach(() => {
+    // Reset mocks
+    mockCollection = {
+      findOne: jest.fn(),
+      updateOne: jest.fn()
+    };
+    mockDb = {
+      collection: jest.fn().mockReturnValue(mockCollection)
+    };
+    mockClient = {
+      db: jest.fn().mockReturnValue(mockDb)
+    };
+    clientPromise.mockResolvedValue(mockClient);
+    rateLimiter.mockResolvedValue(false); // Not rate limited by default
+
+    // Mock session
+    getServerSession.mockResolvedValue({
+      user: {
+        email: 'test@example.com',
+        id: '123'
+      }
+    });
+  });
+
+  afterEach(() => {
     jest.clearAllMocks();
   });
 
-  it('returns 401 when no session exists', async () => {
-    const { getServerSession } = require('next-auth');
-    getServerSession.mockResolvedValueOnce(null);
+  describe('GET', () => {
+    it('returns user settings when authenticated', async () => {
+      const mockUser = {
+        name: 'Test User',
+        username: 'testuser',
+        profileImage: '/test.jpg'
+      };
+      mockCollection.findOne.mockResolvedValue(mockUser);
 
-    mockRequest.json.mockResolvedValueOnce({});
-    const response = await PUT(mockRequest);
-    expect(response.status).toBe(401);
-    expect(await response.json()).toEqual({ error: 'Unauthorized' });
-  });
+      const response = await GET();
+      const data = await response.json();
 
-  it('validates required fields in settings object', async () => {
-    const { getServerSession } = require('next-auth');
-    getServerSession.mockResolvedValueOnce({ user: { email: 'test@example.com' } });
-
-    const invalidSettings = {
-      displayName: '', // Empty display name
-      bio: 'Test bio',
-    };
-
-    mockRequest.json.mockResolvedValueOnce(invalidSettings);
-    const response = await PUT(mockRequest);
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: 'Display name is required' });
-  });
-
-  it('successfully updates user settings', async () => {
-    const { getServerSession } = require('next-auth');
-    getServerSession.mockResolvedValueOnce({ 
-      user: { 
-        email: 'test@example.com',
-        id: 'test-user-id'
-      } 
+      expect(response.status).toBe(200);
+      expect(data).toEqual({
+        name: 'Test User',
+        username: 'testuser',
+        profileImage: '/test.jpg'
+      });
+      expect(mockCollection.findOne).toHaveBeenCalledWith({
+        email: 'test@example.com'
+      });
     });
 
-    const validSettings = {
-      displayName: 'Test User',
-      bio: 'Test bio',
-      theme: 'dark',
-    };
+    it('returns 401 when not authenticated', async () => {
+      getServerSession.mockResolvedValue(null);
 
-    mockRequest.json.mockResolvedValueOnce(validSettings);
-    const response = await PUT(mockRequest);
-    expect(response.status).toBe(200);
-    
-    const responseData = await response.json();
-    expect(responseData.settings).toEqual(expect.objectContaining(validSettings));
-    expect(responseData.settings.updatedAt).toBeDefined();
+      const response = await GET();
+      const data = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(data.error).toBe('Unauthorized');
+      expect(mockCollection.findOne).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when user not found', async () => {
+      mockCollection.findOne.mockResolvedValue(null);
+
+      const response = await GET();
+      const data = await response.json();
+
+      expect(response.status).toBe(404);
+      expect(data.error).toBe('User not found');
+      expect(mockCollection.findOne).toHaveBeenCalled();
+    });
   });
 
-  it('handles database errors gracefully', async () => {
-    const { getServerSession } = require('next-auth');
-    getServerSession.mockResolvedValueOnce({ 
-      user: { 
-        email: 'test@example.com',
-        id: 'test-user-id'
-      } 
+  describe('PUT', () => {
+    it('updates username successfully', async () => {
+      const mockRequest = new Request('http://localhost:3000/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ username: 'newusername' })
+      });
+
+      mockCollection.findOne.mockResolvedValue(null); // No existing user with username
+      mockCollection.updateOne.mockResolvedValue({ modifiedCount: 1 });
+
+      const response = await PUT(mockRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+      expect(mockCollection.updateOne).toHaveBeenCalled();
     });
 
-    // Mock a database error
-    mockClientPromise.db.mockImplementationOnce(() => {
-      throw new Error('Database connection failed');
+    it('validates username format', async () => {
+      const mockRequest = new Request('http://localhost:3000/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ username: 'invalid@username' })
+      });
+
+      const response = await PUT(mockRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('Username can only contain');
+      expect(mockCollection.updateOne).not.toHaveBeenCalled();
     });
 
-    const validSettings = {
-      displayName: 'Test User',
-      bio: 'Test bio',
-    };
+    it('prevents duplicate usernames', async () => {
+      const mockRequest = new Request('http://localhost:3000/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ username: 'existing' })
+      });
 
-    mockRequest.json.mockResolvedValueOnce(validSettings);
-    const response = await PUT(mockRequest);
-    expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: 'Failed to update settings' });
+      mockCollection.findOne.mockResolvedValue({ _id: 'different-user' });
+
+      const response = await PUT(mockRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data.error).toContain('Username already taken');
+      expect(mockCollection.updateOne).not.toHaveBeenCalled();
+    });
+
+    it('handles rate limiting', async () => {
+      rateLimiter.mockResolvedValue(true); // Rate limited
+
+      const mockRequest = new Request('http://localhost:3000/api/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ username: 'test' })
+      });
+
+      const response = await PUT(mockRequest);
+      const data = await response.json();
+
+      expect(response.status).toBe(429);
+      expect(data.error).toContain('Too many requests');
+      expect(mockCollection.updateOne).not.toHaveBeenCalled();
+    });
   });
 });
