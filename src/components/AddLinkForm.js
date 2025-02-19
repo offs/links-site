@@ -104,7 +104,11 @@ export default function AddLinkForm({ onAddLink, initialValues = null, onCancel 
 
     onAddLink({
       title,
-      url: url.startsWith('http') ? url : `https://${url}`,
+      url: url.startsWith('http') || url.startsWith('mailto:')
+        ? url
+        : !url.startsWith('mailto:')
+          ? `https://${url}`
+          : url,
       bgColor: selectedColor.value,
       hoverColor: selectedColor.hover,
       icon,
