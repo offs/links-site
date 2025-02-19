@@ -351,13 +351,22 @@ export default function Settings() {
 
               {editingLink && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4">
-                  <div className="card max-w-md w-full">
+                  <div className="card max-w-md w-full bg-[#1e1e2a]">
                     <h2 className="card-title">Edit Link</h2>
                     <AddLinkForm
                       initialValues={editingLink}
                       onAddLink={handleUpdateLink}
                       onCancel={() => setEditingLink(null)}
                     />
+                    <div className="flex justify-end mt-4">
+                      <button
+                        onClick={() => setEditingLink(null)}
+                        className="btn-secondary"
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
