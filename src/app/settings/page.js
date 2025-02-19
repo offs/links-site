@@ -147,7 +147,7 @@ export default function Settings() {
   const handleAddLink = (link) => {
     const linkToAdd = {
       ...link,
-      url: link.url.startsWith('http') ? link.url : `https://${link.url}`
+      url: link.url.startsWith('http') || link.url.startsWith('mailto:') ? link.url : `https://${link.url}`
     };
 
     saveLinks([...links, linkToAdd]);
@@ -157,7 +157,7 @@ export default function Settings() {
     const updatedLinks = [...links];
     updatedLinks[editingLink.index] = {
       ...updatedLink,
-      url: updatedLink.url.startsWith('http') ? updatedLink.url : `https://${updatedLink.url}`
+      url: updatedLink.url.startsWith('http') || updatedLink.url.startsWith('mailto:') ? updatedLink.url : `https://${updatedLink.url}`
     };
     saveLinks(updatedLinks);
     setEditingLink(null);

@@ -16,8 +16,6 @@
     "test:ci": "jest --ci --coverage",
     "analyze": "ANALYZE=true next build",
     "postinstall": "node -e \"try { require('sharp'); } catch (e) { console.log('Installing sharp for production image optimization...'); require('child_process').execSync('npm install --no-save sharp'); }\"",
-    "prepare": "node -e \"if(process.env.NODE_ENV !== 'production') { process.exit(1) } \"",
-    "prestart": "node -e \"if(process.env.NODE_ENV !== 'production') { console.log('Error: Do not use npm start in development. Use npm run dev instead.'); process.exit(1) }\"",
     "prebuild": "npm run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
