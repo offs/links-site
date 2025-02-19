@@ -53,6 +53,7 @@ export default function LinkItem({
         py-4 px-6
         transition-all duration-200
         flex items-center justify-center gap-2
+        rounded-xl
         ${opacityClass}
         ${border}
         ${shadow}
