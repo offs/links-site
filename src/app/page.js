@@ -61,14 +61,14 @@ export default function Home() {
                       </Link>
                     )}
                     <Link
-                      href="/settings#appearance"
+                      href="/settings"
                       className="px-8 py-4 bg-white/10 text-white rounded-xl hover:bg-white/20 transition-colors font-medium"
                       onClick={(e) => {
                         e.preventDefault();
-                        handleSettingsNavigation('appearance');
+                        handleSettingsNavigation('profile');
                       }}
                     >
-                      Customize Theme
+                      Customize Profile
                     </Link>
                   </>
                 ) : (
